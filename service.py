@@ -1,10 +1,16 @@
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import firestore
+"""Service module for managing evidence packs and items in Firestore.
+"""
 import datetime
 
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+
 class EvidencePackBuilder:
+    """Manages evidence packs and items in Google Cloud Firestore."""
+
     def __init__(self, project_id=None):
+        """Initializes the EvidencePackBuilder with a Firebase project ID."""
         if not firebase_admin._apps:
             # Initialize Firebase Admin SDK if not already initialized
             # For local development, you might need to set GOOGLE_APPLICATION_CREDENTIALS
@@ -12,89 +18,119 @@ class EvidencePackBuilder:
             # For deployment on Google Cloud, it will automatically pick up credentials.
             cred = credentials.ApplicationDefault()
             firebase_admin.initialize_app(cred, {
-                'projectId': project_id,
+                "projectId": project_id,
             })
         self.db = firestore.client()
 
     def create_evidence_pack(self, name, description, created_by, tags=None):
+        """Creates a new evidence pack in Firestore."""
         if tags is None:
             tags = []
         timestamp = datetime.datetime.now(datetime.timezone.utc)
-        pack_ref = self.db.collection('evidencePacks').document()
+        pack_ref = self.db.collection("evidencePacks").document()
         pack_data = {
-            'name': name,
-            'description': description,
-            'createdAt': timestamp,
-            'updatedAt': timestamp,
-            'status': 'draft',
-            'createdBy': created_by,
-            'tags': tags
+            "name": name,
+            "description": description,
+            "createdAt": timestamp,
+            "updatedAt": timestamp,
+            "status": "draft",
+            "createdBy": created_by,
+            "tags": tags,
         }
         pack_ref.set(pack_data)
         return pack_ref.id, pack_data
 
     def get_evidence_pack(self, pack_id):
-        pack_ref = self.db.collection('evidencePacks').document(pack_id)
+        """Retrieves an evidence pack by its ID."""
+        pack_ref = self.db.collection("evidencePacks").document(pack_id)
         pack = pack_ref.get()
         if pack.exists:
             return pack.id, pack.to_dict()
         return None
 
     def update_evidence_pack(self, pack_id, **kwargs):
-        pack_ref = self.db.collection('evidencePacks').document(pack_id)
-        kwargs['updatedAt'] = datetime.datetime.now(datetime.timezone.utc)
+        """Updates an existing evidence pack."""
+        pack_ref = self.db.collection("evidencePacks").document(pack_id)
+        kwargs["updatedAt"] = datetime.datetime.now(datetime.timezone.utc)
         pack_ref.update(kwargs)
         return self.get_evidence_pack(pack_id)
 
     def delete_evidence_pack(self, pack_id):
-        pack_ref = self.db.collection('evidencePacks').document(pack_id)
+        """Deletes an evidence pack by its ID."""
+        pack_ref = self.db.collection("evidencePacks").document(pack_id)
         pack_ref.delete()
         return True
 
-    def add_evidence_item(self, pack_id, item_type, description, url, mime_type, created_by, metadata=None):
-        if metadata is None:
-            metadata = {}
+    def add_evidence_item(self, pack_id, item_data):
+        """Adds an evidence item to a specified evidence pack."""
         timestamp = datetime.datetime.now(datetime.timezone.utc)
-        item_ref = self.db.collection('evidencePacks').document(pack_id).collection('evidenceItems').document()
-        item_data = {
-            'packId': pack_id,
-            'type': item_type,
-            'description': description,
-            'url': url,
-            'mimeType': mime_type,
-            'createdAt': timestamp,
-            'createdBy': created_by,
-            'metadata': metadata
-        }
+        item_ref = (
+            self.db.collection("evidencePacks")
+            .document(pack_id)
+            .collection("evidenceItems")
+            .document()
+        )
+        item_data["packId"] = pack_id
+        item_data["createdAt"] = timestamp
+        item_data["updatedAt"] = timestamp
+        if "metadata" not in item_data:
+            item_data["metadata"] = {}
         item_ref.set(item_data)
-        self.update_evidence_pack(pack_id, updatedAt=timestamp) # Update parent pack's updatedAt
+        # Update parent pack's updatedAt
+        self.update_evidence_pack(pack_id, updatedAt=timestamp)
         return item_ref.id, item_data
 
     def get_evidence_item(self, pack_id, item_id):
-        item_ref = self.db.collection('evidencePacks').document(pack_id).collection('evidenceItems').document(item_id)
+        """Retrieves an evidence item by its ID from a given pack."""
+        item_ref = (
+            self.db.collection("evidencePacks")
+            .document(pack_id)
+            .collection("evidenceItems")
+            .document(item_id)
+        )
         item = item_ref.get()
         if item.exists:
             return item.id, item.to_dict()
         return None
 
     def update_evidence_item(self, pack_id, item_id, **kwargs):
-        item_ref = self.db.collection('evidencePacks').document(pack_id).collection('evidenceItems').document(item_id)
+        """Updates an existing evidence item within a pack."""
+        item_ref = (
+            self.db.collection("evidencePacks")
+            .document(pack_id)
+            .collection("evidenceItems")
+            .document(item_id)
+        )
         item_ref.update(kwargs)
-        self.update_evidence_pack(pack_id, updatedAt=datetime.datetime.now(datetime.timezone.utc)) # Update parent pack's updatedAt
+        # Update parent pack's updatedAt
+        self.update_evidence_pack(pack_id, updatedAt=datetime.datetime.now(datetime.timezone.utc))
         return self.get_evidence_item(pack_id, item_id)
 
     def delete_evidence_item(self, pack_id, item_id):
-        item_ref = self.db.collection('evidencePacks').document(pack_id).collection('evidenceItems').document(item_id)
+        """Deletes an evidence item from a specified pack."""
+        item_ref = (
+            self.db.collection("evidencePacks")
+            .document(pack_id)
+            .collection("evidenceItems")
+            .document(item_id)
+        )
         item_ref.delete()
-        self.update_evidence_pack(pack_id, updatedAt=datetime.datetime.now(datetime.timezone.utc)) # Update parent pack's updatedAt
+        # Update parent pack's updatedAt
+        self.update_evidence_pack(pack_id, updatedAt=datetime.datetime.now(datetime.timezone.utc))
         return True
 
     def list_evidence_items(self, pack_id):
-        items_ref = self.db.collection('evidencePacks').document(pack_id).collection('evidenceItems')
+        """Lists all evidence items within a specified pack."""
+        items_ref = (
+            self.db.collection("evidencePacks")
+            .document(pack_id)
+            .collection("evidenceItems")
+        )
         items = items_ref.stream()
         return [(item.id, item.to_dict()) for item in items]
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # This is a placeholder for testing. In a real scenario, you would configure
     # your Firebase project ID and potentially service account credentials.
     # For local testing, ensure GOOGLE_APPLICATION_CREDENTIALS is set.
